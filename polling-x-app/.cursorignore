@@ -1,0 +1,9 @@
+node_modules/
+.next/
+.env*
+.vercel/
+*.log
+.DS_Store
+.vscode/settings.json
+coverage/
+.nyc_output/
