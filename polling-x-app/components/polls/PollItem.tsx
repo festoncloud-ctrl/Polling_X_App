@@ -1,88 +1,109 @@
 "use client";
 
-import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
-
-interface Poll {
-  id: number;
-  title: string;
-  options: string[];
-  votes: number[];
-  createdAt: string;
-}
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PollSummary } from "@/lib/database.types";
+import { Calendar, Eye, Pencil, Trash2, Users } from "lucide-react";
+import Link from "next/link";
 
 interface PollItemProps {
-  poll: Poll;
-  onVote: (pollId: number, optionIndex: number) => void;
-  onDelete: (id: number) => void;
+  poll: PollSummary;
+  onDelete: (pollId: string) => void;
 }
 
-export function PollItem({ poll, onVote, onDelete }: PollItemProps) {
-  const [hasVoted, setHasVoted] = useState(false);
-  const [selectedOption, setSelectedOption] = useState<number | null>(null);
-
-  const totalVotes = poll.votes.reduce((sum, vote) => sum + vote, 0);
-
-  const handleVote = (optionIndex: number) => {
-    if (hasVoted) return;
-    setSelectedOption(optionIndex);
-    setHasVoted(true);
-    onVote(poll.id, optionIndex);
+export function PollItem({ poll, onDelete }: PollItemProps) {
+  const handleDelete = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (confirm("Are you sure you want to delete this poll?")) {
+      onDelete(poll.id);
+    }
   };
 
-  const handleDelete = () => {
-    onDelete(poll.id);
-  };
+  const isExpired = poll.expires_at && new Date(poll.expires_at) < new Date();
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex justify-between items-start">
-          <CardTitle>{poll.title}</CardTitle>
-          <Button variant="destructive" size="sm" onClick={handleDelete}>
-            Delete
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent>
-        {!hasVoted ? (
-          <div className="space-y-2">
-            {poll.options.map((option, index) => (
+    <Link href={`/polls/${poll.id}`}>
+      <Card className="hover:shadow-md transition-shadow cursor-pointer">
+        <CardHeader>
+          <div className="flex justify-between items-start">
+            <CardTitle className="text-lg line-clamp-2">{poll.title}</CardTitle>
+            <div className="flex gap-2">
+              <Link href={`/polls/${poll.id}/edit`}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-blue-600 hover:text-blue-800 hover:bg-blue-50"
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+              </Link>
               <Button
-                key={index}
-                variant="outline"
-                className="w-full justify-start"
-                onClick={() => handleVote(index)}
+                variant="ghost"
+                size="sm"
+                onClick={handleDelete}
+                className="text-destructive hover:text-destructive hover:bg-destructive/10"
               >
-                {option}
+                <Trash2 className="h-4 w-4" />
               </Button>
-            ))}
+            </div>
           </div>
-        ) : (
-          <div className="space-y-4">
-            <p className="text-sm text-gray-600">Results ({totalVotes} votes)</p>
-            {poll.options.map((option, index) => {
-              const percentage = totalVotes > 0 ? (poll.votes[index] / totalVotes) * 100 : 0;
-              return (
-                <div key={index} className="space-y-1">
-                  <div className="flex justify-between text-sm">
-                    <span className={selectedOption === index ? "font-bold" : ""}>
-                      {option}
-                    </span>
-                    <span>{poll.votes[index]} votes ({percentage.toFixed(1)}%)</span>
-                  </div>
-                  <Progress value={percentage} className="h-2" />
-                </div>
-              );
-            })}
-            <Button variant="outline" onClick={() => setHasVoted(false)}>
-              Vote Again
+
+          {poll.description && (
+            <p className="text-muted-foreground text-sm line-clamp-2">
+              {poll.description}
+            </p>
+          )}
+        </CardHeader>
+
+        <CardContent>
+          <div className="flex items-center justify-between text-sm text-muted-foreground mb-3">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-1">
+                <Users className="h-4 w-4" />
+                <span>{poll.vote_count} votes</span>
+              </div>
+
+              <div className="flex items-center gap-1">
+                <Calendar className="h-4 w-4" />
+                <span>{new Date(poll.created_at).toLocaleDateString()}</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {!poll.is_active && (
+                <span className="text-xs bg-secondary text-secondary-foreground px-2 py-1 rounded">
+                  Inactive
+                </span>
+              )}
+
+              {isExpired && (
+                <span className="text-xs bg-destructive text-destructive-foreground px-2 py-1 rounded">
+                  Expired
+                </span>
+              )}
+
+              {poll.expires_at && !isExpired && (
+                <span className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded">
+                  Expires {new Date(poll.expires_at).toLocaleDateString()}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1 text-sm text-muted-foreground">
+              <Eye className="h-4 w-4" />
+              <span>{poll.options.length} options</span>
+            </div>
+
+            <Button variant="outline" size="sm">
+              View Poll
             </Button>
           </div>
-        )}
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </Link>
   );
 }

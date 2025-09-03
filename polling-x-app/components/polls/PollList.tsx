@@ -1,45 +1,80 @@
 "use client";
 
+import { useAuth } from "@/lib/auth-context";
+import { PollSummary } from "@/lib/database.types";
+import { createClient } from "@/lib/supabase/client";
+import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { PollItem } from "./PollItem";
 
-interface Poll {
-  id: number;
-  title: string;
-  options: string[];
-  votes: number[];
-  createdAt: string;
-}
-
 export function PollList() {
-  const [polls, setPolls] = useState<Poll[]>([]);
+  const [polls, setPolls] = useState<PollSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+  const supabase = createClient();
 
   useEffect(() => {
-    const storedPolls = JSON.parse(localStorage.getItem("polls") || "[]");
-    setPolls(storedPolls);
-  }, []);
+    if (user) {
+      fetchUserPolls();
+    }
+  }, [user]);
 
-  const handleDelete = (id: number) => {
-    const updatedPolls = polls.filter(poll => poll.id !== id);
-    setPolls(updatedPolls);
-    localStorage.setItem("polls", JSON.stringify(updatedPolls));
-  };
+  const fetchUserPolls = async () => {
+    try {
+      const { data, error } = await supabase
+        .rpc('get_user_polls', { user_uuid: user!.id });
 
-  const handleVote = (pollId: number, optionIndex: number) => {
-    const updatedPolls = polls.map(poll => {
-      if (poll.id === pollId) {
-        const newVotes = [...poll.votes];
-        newVotes[optionIndex] += 1;
-        return { ...poll, votes: newVotes };
+      if (error) {
+        console.error('Error fetching polls:', error);
+        toast.error(`Failed to load polls: ${error.message}`);
+        return;
       }
-      return poll;
-    });
-    setPolls(updatedPolls);
-    localStorage.setItem("polls", JSON.stringify(updatedPolls));
+
+      setPolls(data || []);
+    } catch (error) {
+      console.error('Error fetching polls:', error);
+      toast.error("An unexpected error occurred");
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const handleDelete = async (pollId: string) => {
+    try {
+      const { error } = await supabase
+        .from('polls')
+        .delete()
+        .eq('id', pollId);
+
+      if (error) {
+        console.error('Error deleting poll:', error);
+        toast.error("Failed to delete poll");
+        return;
+      }
+
+      toast.success("Poll deleted successfully");
+      fetchUserPolls(); // Refresh the list
+    } catch (error) {
+      console.error('Error deleting poll:', error);
+      toast.error("An unexpected error occurred");
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-8">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
+  }
 
   if (polls.length === 0) {
-    return <p className="text-center text-gray-500">No polls yet. Create one!</p>;
+    return (
+      <div className="text-center py-8">
+        <p className="text-muted-foreground mb-4">No polls yet. Create your first poll!</p>
+      </div>
+    );
   }
 
   return (
@@ -48,7 +83,6 @@ export function PollList() {
         <PollItem
           key={poll.id}
           poll={poll}
-          onVote={handleVote}
           onDelete={handleDelete}
         />
       ))}
