@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/lib/auth-context";
 import { PollInsert } from "@/lib/database.types";
-import { createClient } from "@/lib/supabase/client";
+
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -21,7 +21,6 @@ export function CreatePollForm() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { user } = useAuth();
-  const supabase = createClient();
 
   const addOption = () => {
     if (options.length < 10) {
@@ -63,11 +62,10 @@ export function CreatePollForm() {
     setLoading(true);
 
     try {
-      const pollData: PollInsert = {
+      const pollData: Omit<PollInsert, 'created_by' | 'id' | 'created_at'> = {
         title: title.trim(),
         description: description.trim() || null,
         options: validOptions,
-        created_by: user.id,
         expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
         is_active: true,
         allow_multiple_votes: allowMultipleVotes,
@@ -76,15 +74,17 @@ export function CreatePollForm() {
         settings: {}
       };
 
-      const { data, error } = await supabase
-        .from('polls')
-        .insert(pollData)
-        .select()
-        .single();
+      const response = await fetch('/api/polls', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(pollData),
+      });
 
-      if (error) {
-        console.error('Error creating poll:', error);
-        toast.error(`Failed to create poll: ${error.message}`);
+      if (!response.ok) {
+        const errorData = await response.json();
+        toast.error(`Failed to create poll: ${errorData.error}`);
         return;
       }
 
