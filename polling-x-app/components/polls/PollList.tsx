@@ -1,29 +1,35 @@
 "use client";
 
 import { useAuth } from "@/lib/auth-context";
-import { PollSummary } from "@/lib/database.types";
+import { Poll, PollSummary } from "@/lib/database.types";
 import { createClient } from "@/lib/supabase/client";
 import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { PollItem } from "./PollItem";
 
-export function PollList() {
-  const [polls, setPolls] = useState<PollSummary[]>([]);
-  const [loading, setLoading] = useState(true);
+export function PollList({ initialPolls }: { initialPolls?: (Poll | PollSummary)[] }) {
+  const [polls, setPolls] = useState(initialPolls || []);
+  const [loading, setLoading] = useState(!initialPolls);
   const { user } = useAuth();
   const supabase = createClient();
 
   useEffect(() => {
-    if (user) {
-      fetchUserPolls();
+    if (!initialPolls) {
+      if (user) {
+        fetchUserPolls(user.id);
+      } else {
+        setLoading(false);
+      }
     }
-  }, [user]);
+  }, [initialPolls, user]);
 
-  const fetchUserPolls = async () => {
+  const fetchUserPolls = async (userId?: string) => {
+    if (!userId) return;
+    setLoading(true);
     try {
       const { data, error } = await supabase
-        .rpc('get_user_polls', { user_uuid: user!.id });
+        .rpc('get_user_polls', { user_uuid: userId });
 
       if (error) {
         console.error('Error fetching polls:', error);
@@ -54,7 +60,7 @@ export function PollList() {
       }
 
       toast.success("Poll deleted successfully");
-      fetchUserPolls(); // Refresh the list
+      setPolls(polls.filter(p => p.id !== pollId));
     } catch (error) {
       console.error('Error deleting poll:', error);
       toast.error("An unexpected error occurred");
@@ -82,7 +88,7 @@ export function PollList() {
       {polls.map((poll) => (
         <PollItem
           key={poll.id}
-          poll={poll}
+          poll={poll as PollSummary}
           onDelete={handleDelete}
         />
       ))}
