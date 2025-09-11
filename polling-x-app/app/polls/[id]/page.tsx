@@ -11,7 +11,7 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 interface PollWithResults extends Poll {
-  results: { option_index: number; vote_count: number }[];
+  results: { option: string; votes: number }[];
   user_vote?: number | null;
   has_voted: boolean;
 }
@@ -31,10 +31,9 @@ export default function PollDetailPage() {
 
   const fetchPoll = useCallback(async () => {
     try {
-      // Fetch poll data
       const { data: pollData, error: pollError } = await supabase
         .from('polls')
-        .select('*')
+        .select('*, results:results_view(*)')
         .eq('id', pollId)
         .single();
 
@@ -45,7 +44,6 @@ export default function PollDetailPage() {
         return;
       }
 
-      // Check if user has voted
       let userVote = null;
       let hasVoted = false;
       if (user) {
@@ -62,23 +60,15 @@ export default function PollDetailPage() {
         }
       }
 
-      // Get vote results
-      const { data: results, error: resultsError } = await supabase
-        .rpc('get_poll_results', { poll_uuid: pollId });
-
-      if (resultsError) {
-        console.error('Error fetching results:', resultsError);
-      }
-
       const pollWithResults: PollWithResults = {
         ...pollData,
-        results: results || [],
+        results: pollData.results || [],
         user_vote: userVote,
-        has_voted: hasVoted
+        has_voted: hasVoted,
       };
 
       setPoll(pollWithResults);
-      setShowThankYou(false); // Reset thank you message on data refresh
+      setShowThankYou(hasVoted);
     } catch (error) {
       console.error('Error fetching poll:', error);
       toast.error("Failed to load poll");
@@ -90,8 +80,28 @@ export default function PollDetailPage() {
   useEffect(() => {
     if (pollId) {
       fetchPoll();
+
+      const channel = supabase
+        .channel(`poll_${pollId}`)
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'polls', filter: `id=eq.${pollId}` },
+          (payload) => {
+            setPoll((prevPoll) => {
+              if (prevPoll) {
+                return { ...prevPoll, ...payload.new };
+              }
+              return prevPoll;
+            });
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
     }
-  }, [pollId, fetchPoll]);
+  }, [pollId, fetchPoll, supabase]);
 
   const handleVote = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -111,7 +121,7 @@ export default function PollDetailPage() {
         .insert({
           poll_id: pollId,
           user_id: user.id,
-          option_index: selectedOption
+          option_index: selectedOption,
         });
 
       if (error) {
@@ -121,8 +131,7 @@ export default function PollDetailPage() {
       }
 
       toast.success("Vote submitted successfully!");
-      setShowThankYou(true);
-      fetchPoll(); // Refresh poll data
+      // No need to call fetchPoll() here, real-time will update the UI
     } catch (error) {
       console.error('Error voting:', error);
       toast.error("An unexpected error occurred");
@@ -138,7 +147,7 @@ export default function PollDetailPage() {
   };
 
   const getTotalVotes = () => {
-    return poll?.results.reduce((sum, result) => sum + result.vote_count, 0) || 0;
+    return poll?.results.reduce((sum, result) => sum + result.votes, 0) || 0;
   };
 
   const getVotePercentage = (voteCount: number) => {
@@ -224,7 +233,7 @@ export default function PollDetailPage() {
                         onChange={() => setSelectedOption(index)}
                         className="w-4 h-4 text-primary"
                       />
-                      <span className="font-medium">{option}</span>
+                      <span className="font-medium">{option.option}</span>
                     </label>
                   ))}
                 </div>
@@ -245,16 +254,15 @@ export default function PollDetailPage() {
               </form>
             ) : (
               <div className="space-y-3">
-                {poll.options.map((option, index) => {
-                  const result = poll.results.find(r => r.option_index === index);
-                  const voteCount = result?.vote_count || 0;
+                {poll.results.map((result, index) => {
+                  const voteCount = result.votes || 0;
                   const percentage = getVotePercentage(voteCount);
                   const isUserVote = poll.user_vote === index;
 
                   return (
                     <div key={index} className="space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="font-medium">{option}</span>
+                        <span className="font-medium">{result.option}</span>
                         <div className="flex items-center gap-2">
                           <span className="text-sm text-muted-foreground">
                             {voteCount} votes ({percentage}%)
@@ -283,7 +291,7 @@ export default function PollDetailPage() {
         </Card>
 
         {/* Thank You Message */}
-        {showThankYou && poll.has_voted && (
+        {showThankYou && (
           <Card>
             <CardContent className="pt-6">
               <div className="text-center">
